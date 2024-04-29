@@ -2,10 +2,11 @@ from markupsafe import Markup
 from chatbot import chatbot
 from flask import Flask, render_template, request,session,logging,url_for,redirect,flash
 from flask_recaptcha import ReCaptcha
-import mysql.connector
+
 import os
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = { "connect_args": { "check_same_thread": False } }
 recaptcha = ReCaptcha(app=app)
 app.secret_key=os.urandom(24)
 app.static_folder = 'static'
@@ -22,20 +23,14 @@ recaptcha.init_app(app)
 
 app.config['SECRET_KEY'] = 'cairocoders-ednalan'
 
-#database connectivity
-import pymysql
+# database connectivity
+from pymongo import MongoClient
 
-conn = pymysql.connect(
-    host='localhost',
-    port=3306,
-    user='root',
-    password='1245',
-    db='register'
-)
+client = MongoClient('localhost', 27017)
+db = client['register']
+users = db['users']
+suggestions = db['suggestion']
 
-cur = conn.cursor()
-# conn=mysql.connector.connect(host='localhost',port='3306',user='root',password='1234',database='register')
-# cur=conn.cursor()
 
 # Google recaptcha - site key : 6LdbAx0aAAAAAANl04WHtDbraFMufACHccHbn09L
 # Google recaptcha - secret key : 6LdbAx0aAAAAAMmkgBKJ2Z9xsQjMD5YutoXC6Wee
@@ -60,15 +55,14 @@ def about():
 def forgot():
     return render_template('forgot.html')
 
-@app.route('/login_validation',methods=['POST'])
+@app.route('/login_validation', methods=['POST'])
 def login_validation():
-    email=request.form.get('email')
-    password=request.form.get('password')
+    email = request.form.get('email')
+    password = request.form.get('password')
 
-    cur.execute("""SELECT * FROM `users` WHERE `email` LIKE '{}' AND `password` LIKE '{}'""".format(email,password))
-    users = cur.fetchall()
-    if len(users)>0:
-        session['id']=users[0][0]
+    user = users.find_one({'email': email, 'password': password})
+    if user:
+        session['id'] = str(user['_id'])
         flash('You were successfully logged in')
         return redirect('/index')
     else:
@@ -77,28 +71,24 @@ def login_validation():
     # return "The Email is {} and the Password is {}".format(email,password)
     # return render_template('register.html')
 
-@app.route('/add_user',methods=['POST'])
+@app.route('/add_user', methods=['POST'])
 def add_user():
-    name=request.form.get('name') 
-    email=request.form.get('uemail')
-    password=request.form.get('upassword')
+    name = request.form.get('name')
+    email = request.form.get('uemail')
+    password = request.form.get('upassword')
 
-    #cur.execute("UPDATE users SET password='{}'WHERE name = '{}'".format(password, name))
-    cur.execute("""INSERT INTO  users(name,email,password) VALUES('{}','{}','{}')""".format(name,email,password))
-    conn.commit()
-    cur.execute("""SELECT * FROM `users` WHERE `email` LIKE '{}'""".format(email))
-    myuser=cur.fetchall()
+    users.insert_one({'name': name, 'email': email, 'password': password})
+    user = users.find_one({'email': email})
     flash('You have successfully registered!')
-    session['id']=myuser[0][0]
+    session['id'] = str(user['_id'])
     return redirect('/index')
 
-@app.route('/suggestion',methods=['POST'])
+@app.route('/suggestion', methods=['POST'])
 def suggestion():
-    email=request.form.get('uemail')
-    suggesMess=request.form.get('message')
+    email = request.form.get('uemail')
+    suggesMess = request.form.get('message')
 
-    cur.execute("""INSERT INTO  suggestion(email,message) VALUES('{}','{}')""".format(email,suggesMess))
-    conn.commit()
+    suggestions.insert_one({'email': email, 'message': suggesMess})
     flash('You suggestion is succesfully sent!')
     return redirect('/index')
 
